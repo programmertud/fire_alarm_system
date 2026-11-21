@@ -591,7 +591,10 @@ WiFiManager::WiFiManager(const char* ssid, const char* password)
 }
 
 void WiFiManager::begin() {
+  WiFi.disconnect(true);
+  delay(100);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Prevents ESP32-S3 radio from sleeping during WPA2 authentication handshake
   WiFi.begin(_ssid, _password);
   _lastAttempt = millis();
   Serial.printf("[WiFi] Connecting to %s...\n", _ssid);
@@ -617,7 +620,9 @@ void WiFiManager::update() {
     Serial.printf("[WiFi] Re-attempting connection to %s...\n", _ssid);
   }
 
-  WiFi.reconnect();
+  WiFi.disconnect();
+  delay(100);
+  WiFi.begin(_ssid, _password);
 }
 
 bool WiFiManager::isConnected() const {
