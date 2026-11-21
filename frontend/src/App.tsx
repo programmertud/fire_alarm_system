@@ -26,29 +26,39 @@ export default function App() {
       setError("");
     });
     socket.on("disconnect", () => setSocketConnected(false));
-    socket.on("connect_error", () =>
-      setError("Cannot connect to backend server. Make sure port 3001 is running.")
-    );
+    socket.on("connect_error", () => {
+      // Don't show blocking error if HTTP polling is working
+    });
     socket.on("telemetry", (event: TelemetryEvent) => {
       if (event.telemetry) setTelemetry(event.telemetry);
-      setReceivedAt(event.receivedAt);
+      if (event.receivedAt) setReceivedAt(event.receivedAt);
     });
 
-    fetch(`${API_BASE}/api/telemetry/latest`)
-      .then((r) => {
-        if (!r.ok) throw new Error();
-        return r.json() as Promise<TelemetryEvent>;
-      })
-      .then((e) => {
-        if (e.telemetry) setTelemetry(e.telemetry);
-        setReceivedAt(e.receivedAt);
-      })
-      .catch(() => setError("Waiting for backend connection…"));
+    const fetchLatest = () => {
+      fetch(`${API_BASE}/api/telemetry/latest`)
+        .then((r) => {
+          if (!r.ok) throw new Error();
+          return r.json() as Promise<TelemetryEvent>;
+        })
+        .then((e) => {
+          if (e.telemetry) setTelemetry(e.telemetry);
+          if (e.receivedAt) setReceivedAt(e.receivedAt);
+          setError("");
+        })
+        .catch(() => {
+          if (!telemetry) setError("Connecting to live backend…");
+        });
+    };
+
+    fetchLatest();
+    // Continuous polling every 2.0s ensures dashboard ALWAYS reads time-to-time
+    const pollInterval = setInterval(fetchLatest, 2000);
 
     return () => {
       socket.close();
+      clearInterval(pollInterval);
     };
-  }, []);
+  }, [telemetry]);
 
   const alarmActive = telemetry?.alarmActive ?? false;
 

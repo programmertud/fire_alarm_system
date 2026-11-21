@@ -45,12 +45,12 @@ constexpr bool RELAY_ACTIVE_LOW = true;
 constexpr int   MQ2_ALARM_THRESHOLD = 800;    // Buzzer triggers when live ADC reaches 800 or higher (sensitive smoke detection)
 constexpr float TEMP_THRESHOLD_C    = 40.0f;  // Buzzer triggers when temperature reaches 40°C or higher
 
-// MQ2 Warmup Guard — sensor heater stabilizes for 60s at boot to prevent false buzzer triggers
-constexpr unsigned long MQ2_WARMUP_MS = 60000UL; // 60 seconds boot warmup
+// Immediate Real-Time Active Monitoring (0s warmup - reads and arms immediately at boot)
+constexpr unsigned long MQ2_WARMUP_MS = 0UL;
 
-// Timing Configuration
-constexpr unsigned long SENSOR_INTERVAL_MS = 2000;
-constexpr unsigned long TELEMETRY_INTERVAL_MS = 3000;
+// Timing Configuration - continuous rapid sampling time-to-time
+constexpr unsigned long SENSOR_INTERVAL_MS = 1000;    // Sample sensors every 1.0 second
+constexpr unsigned long TELEMETRY_INTERVAL_MS = 2500; // Cloud telemetry update every 2.5 seconds
 constexpr unsigned long SMS_COOLDOWN_MS = 5UL * 60UL * 1000UL;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long GSM_RETRY_INTERVAL_MS = 15000;
@@ -863,18 +863,8 @@ void loop() {
     humidityPct   = readings.humidityPct;
     sensorStatus  = readings.sensorStatus;
 
-    // ── Boot Warmup Guard (First 60s) ─────────────────────────────────────────
-    // Mute buzzer during the first 60s while MQ-2 heater stabilizes after boot.
-    // Telemetry is still sent so the dashboard shows live ADC immediately.
-    bool warmupActive = (now < MQ2_WARMUP_MS);
-    bool risingEdge = false;
-
-    if (!warmupActive) {
-      risingEdge = alarmManager.evaluate(mq2Raw, temperatureC, humidityPct, MQ2_ALARM_THRESHOLD, TEMP_THRESHOLD_C);
-    } else {
-      Serial.printf("[SENSOR] MQ-2 warming up... (%lus remaining) live_ADC=%d\n",
-                    (MQ2_WARMUP_MS - now) / 1000UL, mq2Raw);
-    }
+    // ── Real-Time Alarm Evaluation (Continuous time-to-time active monitoring) ──
+    bool risingEdge = alarmManager.evaluate(mq2Raw, temperatureC, humidityPct, MQ2_ALARM_THRESHOLD, TEMP_THRESHOLD_C);
 
     // ── CRITICAL DISPATCH: FAST CLOUD TRANSMISSION (TEXTBEE & BREVO) ──
     // When alarm fires, do NOT wait for the 3-second cycle. Dispatch immediately!

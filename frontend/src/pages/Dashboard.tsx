@@ -122,6 +122,32 @@ export default function Dashboard({
         </div>
       )}
 
+      {/* ── Continuous Live Status Banner ─────────── */}
+      <div className={`condition-banner ${alarm ? "alarm-active" : "safe-active"}`}>
+        <div className="banner-icon-badge">
+          {alarm ? "🚨" : "🛡️"}
+        </div>
+        <div className="banner-content">
+          <div className="banner-top">
+            <span className={`banner-badge ${alarm ? "danger" : "safe"}`}>
+              {alarm ? "HAZARD ACTIVE" : "CONTINUOUS MONITORING ACTIVE"}
+            </span>
+            <h2 className="banner-title">
+              {alarm ? telemetry?.alarmReason || "EMERGENCY DETECTED" : "All Sensors Operational & Reading Live"}
+            </h2>
+          </div>
+          <div className="banner-bottom">
+            <span className="banner-reason">
+              {receivedAt
+                ? `Last live reading: ${new Date(receivedAt).toLocaleTimeString()}`
+                : "Awaiting incoming sensor stream..."}
+            </span>
+            <span className="banner-sep">•</span>
+            <span className="banner-subtext">Continuous Auto-Sync (Every 2s)</span>
+          </div>
+        </div>
+      </div>
+
       {/* ── Realtime Sensor Grid (Expanded Hero Cards) ─────────── */}
       <section className="metrics-row">
         <MetricCard
