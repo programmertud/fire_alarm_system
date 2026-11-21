@@ -13,9 +13,8 @@ const char* WIFI_SSID = "Converge_2.4GHz_KmU4";
 const char* WIFI_PASSWORD = "PfmnWf2q";
 
 // Backend API Configuration
-// The backend handles TextBee SMS gateway and Brevo Email notifications.
-// Ensure your computer's LAN IP is reachable from the ESP32.
-const char* API_URL = "http://192.168.100.15:3001/api/telemetry";
+// The backend handles TextBee SMS gateway and Brevo Email notifications via Render Cloud.
+const char* API_URL = "https://fire-alarm-system-by3n.onrender.com/api/telemetry";
 const char* DEVICE_ID = "esp32s3-fire-alarm-01";
 
 // Physical SIM900A Hardware Module Configuration (Offline Backup)
