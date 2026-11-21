@@ -681,29 +681,11 @@ APIClient::APIClient(const char* apiUrl)
 
 bool APIClient::sendTelemetry(const TelemetryData& data, bool isEmergency) {
   HTTPClient http;
-  http.setTimeout(isEmergency ? 6000 : 3500);
+  http.setTimeout(isEmergency ? 8000 : 6000);
+  http.setReuse(false);
 
   bool isHttps = (strncmp(_apiUrl, "https://", 8) == 0);
-  bool initOk = false;
-
-  WiFiClient plainClient;
-  WiFiClientSecure secureClient;
-
-  if (isHttps) {
-    secureClient.setInsecure(); // Connect securely to Render HTTPS without hardcoded certificates
-    initOk = http.begin(secureClient, _apiUrl);
-  } else {
-    initOk = http.begin(plainClient, _apiUrl);
-  }
-
-  if (!initOk) {
-    _lastStatus = "HTTP_INIT_FAILED";
-    _lastResponseCode = 0;
-    Serial.println("[HTTP] Could not initialize connection to backend.");
-    return false;
-  }
-
-  http.addHeader("Content-Type", "application/json");
+  int code = 0;
 
   JsonDocument doc;
   doc["deviceId"] = data.deviceId;
@@ -726,20 +708,50 @@ bool APIClient::sendTelemetry(const TelemetryData& data, bool isEmergency) {
   String payload;
   serializeJson(doc, payload);
 
-  int code = http.POST(payload);
+  if (isHttps) {
+    std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
+    if (!client) {
+      Serial.println("[HTTP] Failed to allocate SSL client in memory.");
+      return false;
+    }
+    client->setInsecure();
+    client->setTimeout(6000);
+
+    if (!http.begin(*client, _apiUrl)) {
+      _lastStatus = "HTTP_INIT_FAILED";
+      _lastResponseCode = 0;
+      Serial.println("[HTTP] Could not initialize SSL connection to backend.");
+      return false;
+    }
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "close");
+
+    code = http.POST(payload);
+    http.end();
+  } else {
+    WiFiClient client;
+    if (!http.begin(client, _apiUrl)) {
+      _lastStatus = "HTTP_INIT_FAILED";
+      _lastResponseCode = 0;
+      Serial.println("[HTTP] Could not initialize connection to backend.");
+      return false;
+    }
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "close");
+
+    code = http.POST(payload);
+    http.end();
+  }
+
   _lastResponseCode = code;
 
   if (code >= 200 && code < 300) {
     _lastStatus = "SUCCESS";
-    if (isEmergency) {
-      Serial.println("[CLOUD] 🚨 Emergency telemetry delivered to Backend!");
-      Serial.println("[CLOUD] -> Backend triggered TextBee SMS & Brevo Email alerts.");
-    }
-    http.end();
+    Serial.printf("[HTTP] ✓ Cloud sync OK (HTTP %d)\n", code);
     return true;
   } else {
     _lastStatus = "HTTP_ERROR";
-    http.end();
+    Serial.printf("[HTTP] ✗ Cloud sync failed (code=%d: %s)\n", code, http.errorToString(code).c_str());
     return false;
   }
 }
@@ -914,13 +926,7 @@ void loop() {
 
     if (wifiManager.isConnected()) {
       TelemetryData telemetry = buildCurrentTelemetry();
-      if (apiClient.sendTelemetry(telemetry, false)) {
-        // Telemetry delivered OK
-      } else {
-        Serial.printf("[API] Telemetry failed (code=%d, status=%s)\n",
-                      apiClient.getLastResponseCode(),
-                      apiClient.getLastStatus().c_str());
-      }
+      apiClient.sendTelemetry(telemetry, false);
     }
   }
 
