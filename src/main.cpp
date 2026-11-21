@@ -42,7 +42,7 @@ constexpr int DHT_TYPE = DHT22;
 constexpr bool RELAY_ACTIVE_LOW = true;
 
 // Alarm Thresholds
-constexpr int   MQ2_ALARM_THRESHOLD = 1500;   // Buzzer triggers when live ADC reaches 1500 or higher
+constexpr int   MQ2_ALARM_THRESHOLD = 800;    // Buzzer triggers when live ADC reaches 800 or higher (sensitive smoke detection)
 constexpr float TEMP_THRESHOLD_C    = 40.0f;  // Buzzer triggers when temperature reaches 40°C or higher
 
 // MQ2 Warmup Guard — sensor heater stabilizes for 60s at boot to prevent false buzzer triggers
@@ -840,7 +840,7 @@ void setup() {
   Serial.printf("[INIT] Boot Warmup: %lus | Smoke Alarm Threshold: >= %d ADC\n",
                 MQ2_WARMUP_MS / 1000UL, MQ2_ALARM_THRESHOLD);
   Serial.printf("[INIT] Temperature Alarm Threshold: >= %.1f deg C\n", TEMP_THRESHOLD_C);
-  Serial.println("[INIT] Buzzer triggers when Smoke >= 1500 ADC OR Temp >= 40.0C.");
+  Serial.println("[INIT] Buzzer triggers when Smoke >= 800 ADC OR Temp >= 40.0C.");
   Serial.println("[INIT] Setup complete.\n");
 }
 

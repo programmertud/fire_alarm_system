@@ -108,7 +108,7 @@ export default function Dashboard({
 
   const smokeAlert =
     (telemetry?.alarmActive && (telemetry?.alarmReason?.includes("SMOKE") ?? false)) ||
-    (telemetry?.mq2Raw ?? 0) >= 1500;
+    (telemetry?.mq2Raw ?? 0) >= 800;
   const tempAlert =
     (telemetry?.alarmActive && (telemetry?.alarmReason?.includes("TEMPERATURE") ?? false)) ||
     (telemetry?.temperatureC ?? 0) >= 40;
@@ -129,7 +129,7 @@ export default function Dashboard({
           label="Smoke / Flammable Gas"
           value={telemetry ? String(telemetry.mq2Raw) : "--"}
           unit="ADC"
-          note="MQ-2 live sensor ADC (0–4095) · Alarm threshold: 1500 ADC"
+          note="MQ-2 live sensor ADC (0–4095) · Alarm threshold: ≥800 ADC"
           rangeMin="0"
           rangeMax="4095"
           barPct={smokePct}
