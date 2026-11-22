@@ -13,7 +13,7 @@ export default function Navbar({ alarmActive, hasTelemetry }: NavbarProps) {
           <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
             <div className="brand-text">
               <span className="brand-eyebrow">IoT Disaster Prevention</span>
-              <h1 className="brand-title">Fire Alarm Monitor</h1>
+              <h1 className="brand-title">Brgy. Cagniog Fire Alarm System</h1>
             </div>
           </Link>
         </div>

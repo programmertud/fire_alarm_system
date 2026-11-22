@@ -101,7 +101,7 @@ export default function App() {
 
         <footer className="app-footer">
           <div className="footer-container">
-            <span>Barangay Cagniog Fire Alarm System</span>
+            <span>Brgy. Cagniog Fire Alarm System</span>
           </div>
         </footer>
       </div>
