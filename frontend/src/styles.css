@@ -1048,20 +1048,35 @@ body {
   opacity: 0.4;
 }
 
-/* ── 8. Responsive Design & Media Queries ────────────────── */
+/* ── 8. 100% Responsive Design Across All Screen Sizes ────────── */
 
-/* Laptop / Desktop Full Viewport Optimization (≥ 1024px) */
-@media (min-width: 1024px) {
-  .dashboard-layout {
-    /* Perfectly fits within 720p / 768p / 900p / 1080p desktop windows */
-    justify-content: flex-start;
+/* Ultra-Wide & Large Desktops (≥ 1440px) */
+@media (min-width: 1440px) {
+  .content-container {
+    max-width: 1400px;
+    padding: 24px 32px;
+  }
+  .metric-card {
+    min-height: 280px;
   }
 }
 
-/* Tablet / Medium Screens (768px – 1023px) */
+/* Standard Desktops & Laptops (1024px – 1439px) */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .metrics-row {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .metric-card {
+    min-height: 250px;
+    padding: 20px 22px;
+  }
+}
+
+/* Tablet & Foldable Screens (768px – 1023px) */
 @media (max-width: 1023px) {
   .metrics-row {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 16px;
   }
 
@@ -1071,6 +1086,7 @@ body {
 
   .alert-grid-split {
     grid-template-columns: 1fr;
+    gap: 18px;
   }
 
   .setup-steps-grid {
@@ -1078,46 +1094,73 @@ body {
   }
 }
 
-/* Mobile Screens (< 768px) */
+/* Mobile Devices & Phablets (< 768px) */
 @media (max-width: 767px) {
   :root {
     --nav-height: auto;
   }
 
   .navbar-container {
-    padding: 10px 16px;
-    flex-direction: column;
-    align-items: stretch;
+    padding: 10px 14px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
     gap: 10px;
   }
 
   .navbar-brand {
     justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .brand-title {
+    font-size: clamp(0.95rem, 4.2vw, 1.15rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-eyebrow {
+    font-size: 0.62rem;
   }
 
   .navbar-actions {
-    justify-content: space-between;
-    width: 100%;
-  }
-
-  .navbar-nav {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .nav-btn {
-    padding: 5px 10px;
-    font-size: 0.7rem;
+    justify-content: flex-end;
+    width: auto;
+    flex-shrink: 0;
   }
 
   .status-pill {
     padding: 5px 10px;
-    font-size: 0.65rem;
+    font-size: 0.68rem;
+    white-space: nowrap;
   }
 
   .content-container {
     padding: 12px 14px;
-    gap: 12px;
+    gap: 14px;
+  }
+
+  .condition-banner {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .banner-icon-badge {
+    font-size: 1.35rem;
+    padding-top: 2px;
+  }
+
+  .banner-title {
+    font-size: 0.88rem;
+    line-height: 1.3;
+  }
+
+  .banner-bottom {
+    font-size: 0.72rem;
+    gap: 5px;
   }
 
   .metrics-row {
@@ -1126,26 +1169,57 @@ body {
   }
 
   .metric-card {
-    min-height: 200px;
-    padding: 18px 20px;
+    min-height: auto;
+    padding: 18px 18px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .mc-top {
+    margin-bottom: 8px;
+  }
+
+  .mc-label {
+    font-size: 0.82rem;
   }
 
   .mc-value {
-    font-size: 2.4rem;
+    font-size: clamp(2.4rem, 10vw, 3.2rem);
+  }
+
+  .mc-unit {
+    font-size: 1.05rem;
   }
 
   .page-header-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
+  }
+
+  .page-header-row h2 {
+    font-size: 1.25rem;
   }
 
   .phone-form {
     flex-direction: column;
+    gap: 8px;
+  }
+
+  .phone-input {
+    min-height: 44px; /* Touch-friendly tap target */
+    font-size: 0.9rem;
+  }
+
+  .btn {
+    min-height: 44px;
+    font-size: 0.82rem;
   }
 
   .phone-item {
     flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    word-break: break-all;
   }
 
   .phone-item-actions {
@@ -1153,9 +1227,36 @@ body {
     justify-content: flex-end;
   }
 
-  .condition-banner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  .app-footer {
+    padding: 12px 16px;
+    font-size: 0.72rem;
+  }
+}
+
+/* Extra-Small Mobile Screens (≤ 380px e.g. iPhone SE) */
+@media (max-width: 380px) {
+  .navbar-container {
+    padding: 8px 10px;
+  }
+
+  .brand-title {
+    font-size: 0.88rem;
+  }
+
+  .status-pill {
+    padding: 4px 7px;
+    font-size: 0.62rem;
+  }
+
+  .content-container {
+    padding: 10px 10px;
+  }
+
+  .metric-card {
+    padding: 14px 14px;
+  }
+
+  .mc-value {
+    font-size: 2.2rem;
   }
 }
