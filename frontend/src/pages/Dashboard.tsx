@@ -27,7 +27,7 @@ interface MetricCardProps {
   label: string;
   value: string;
   unit?: string;
-  note: string;
+  note?: string;
   rangeMin: string;
   rangeMax: string;
   barPct: number;
@@ -82,9 +82,11 @@ function MetricCard({
       </div>
 
       {/* ── Footer note ── */}
-      <div className="mc-footer">
-        <span className="mc-note">{note}</span>
-      </div>
+      {note && (
+        <div className="mc-footer">
+          <span className="mc-note">{note}</span>
+        </div>
+      )}
     </article>
   );
 }
@@ -155,7 +157,6 @@ export default function Dashboard({
           label="Smoke / Flammable Gas"
           value={telemetry ? String(telemetry.mq2Raw) : "--"}
           unit="ADC"
-          note="MQ-2 live sensor ADC (0–4095) · Alarm: ≥1000 ADC · Reset: <820 ADC"
           rangeMin="0"
           rangeMax="4095"
           barPct={smokePct}
@@ -171,11 +172,6 @@ export default function Dashboard({
               : "--"
           }
           unit="°C"
-          note={
-            telemetry?.temperatureC != null
-              ? "DHT22 precision thermal sensor · Alarm threshold: 40.0°C"
-              : "DHT22 initializing · Check GPIO 4 & 3.3V connection"
-          }
           rangeMin="0°C"
           rangeMax="80°C"
           barPct={tempPct}
@@ -191,11 +187,6 @@ export default function Dashboard({
               : "--"
           }
           unit="%"
-          note={
-            telemetry?.humidityPct != null
-              ? "DHT22 relative atmospheric moisture sensor (0–100%)"
-              : "DHT22 initializing · Check GPIO 4 & 3.3V connection"
-          }
           rangeMin="0%"
           rangeMax="100%"
           barPct={humPct}
