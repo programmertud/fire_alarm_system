@@ -30,7 +30,13 @@ export default function App() {
       // Don't show blocking error if HTTP polling is working
     });
     socket.on("telemetry", (event: TelemetryEvent) => {
-      if (event.telemetry) setTelemetry(event.telemetry);
+      if (event.telemetry) {
+        setTelemetry((prev) => ({
+          ...event.telemetry!,
+          temperatureC: event.telemetry!.temperatureC ?? prev?.temperatureC ?? null,
+          humidityPct: event.telemetry!.humidityPct ?? prev?.humidityPct ?? null,
+        }));
+      }
       if (event.receivedAt) setReceivedAt(event.receivedAt);
     });
 
@@ -41,7 +47,13 @@ export default function App() {
           return r.json() as Promise<TelemetryEvent>;
         })
         .then((e) => {
-          if (e.telemetry) setTelemetry(e.telemetry);
+          if (e.telemetry) {
+            setTelemetry((prev) => ({
+              ...e.telemetry!,
+              temperatureC: e.telemetry!.temperatureC ?? prev?.temperatureC ?? null,
+              humidityPct: e.telemetry!.humidityPct ?? prev?.humidityPct ?? null,
+            }));
+          }
           if (e.receivedAt) setReceivedAt(e.receivedAt);
           setError("");
         })

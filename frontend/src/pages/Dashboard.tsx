@@ -171,7 +171,11 @@ export default function Dashboard({
               : "--"
           }
           unit="°C"
-          note="DHT22 precision thermal sensor · Alarm threshold: 40.0°C"
+          note={
+            telemetry?.temperatureC != null
+              ? "DHT22 precision thermal sensor · Alarm threshold: 40.0°C"
+              : "DHT22 initializing · Check GPIO 4 & 3.3V connection"
+          }
           rangeMin="0°C"
           rangeMax="80°C"
           barPct={tempPct}
@@ -187,7 +191,11 @@ export default function Dashboard({
               : "--"
           }
           unit="%"
-          note="DHT22 relative atmospheric moisture sensor (0–100%)"
+          note={
+            telemetry?.humidityPct != null
+              ? "DHT22 relative atmospheric moisture sensor (0–100%)"
+              : "DHT22 initializing · Check GPIO 4 & 3.3V connection"
+          }
           rangeMin="0%"
           rangeMax="100%"
           barPct={humPct}
