@@ -107,10 +107,10 @@ export default function Dashboard({
   const humPct = telemetry?.humidityPct != null ? clamp(telemetry.humidityPct, 0, HUM_MAX) : 0;
 
   const smokeAlert =
-    (telemetry?.alarmActive && (telemetry?.alarmReason?.includes("SMOKE") ?? false)) ||
-    (telemetry?.mq2Raw ?? 0) >= 800;
+    Boolean(telemetry?.alarmActive && telemetry?.alarmReason?.includes("SMOKE")) ||
+    (telemetry?.mq2Raw ?? 0) >= 1000;
   const tempAlert =
-    (telemetry?.alarmActive && (telemetry?.alarmReason?.includes("TEMPERATURE") ?? false)) ||
+    Boolean(telemetry?.alarmActive && telemetry?.alarmReason?.includes("TEMPERATURE")) ||
     (telemetry?.temperatureC ?? 0) >= 40;
 
   return (
@@ -155,7 +155,7 @@ export default function Dashboard({
           label="Smoke / Flammable Gas"
           value={telemetry ? String(telemetry.mq2Raw) : "--"}
           unit="ADC"
-          note="MQ-2 live sensor ADC (0–4095) · Alarm threshold: ≥800 ADC"
+          note="MQ-2 live sensor ADC (0–4095) · Alarm: ≥1000 ADC · Reset: <820 ADC"
           rangeMin="0"
           rangeMax="4095"
           barPct={smokePct}

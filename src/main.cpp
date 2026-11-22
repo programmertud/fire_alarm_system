@@ -41,9 +41,12 @@ constexpr int DHT_TYPE = DHT22;
 // Relay Configuration (Active LOW for common relay modules)
 constexpr bool RELAY_ACTIVE_LOW = true;
 
-// Alarm Thresholds
-constexpr int   MQ2_ALARM_THRESHOLD = 800;    // Buzzer triggers when live ADC reaches 800 or higher (sensitive smoke detection)
-constexpr float TEMP_THRESHOLD_C    = 40.0f;  // Buzzer triggers when temperature reaches 40°C or higher
+// Alarm Thresholds with Fast Recovery Hysteresis (Schmitt Trigger)
+// Clean air baseline in your room is ~615–630 ADC. Real smoke easily reaches 1300–2500+ ADC.
+constexpr int   MQ2_TRIGGER_THRESHOLD = 1000;   // Smoke alarm triggers when live ADC reaches 1000 or higher
+constexpr int   MQ2_CLEAR_THRESHOLD   = 820;    // Alarm normalizes quickly when smoke drops below 820 ADC (<8s recovery)
+constexpr float TEMP_TRIGGER_C        = 40.0f;  // Temperature alarm triggers at 40°C
+constexpr float TEMP_CLEAR_C          = 38.0f;  // Temperature alarm clears below 38°C
 
 // Immediate Real-Time Active Monitoring (0s warmup - reads and arms immediately at boot)
 constexpr unsigned long MQ2_WARMUP_MS = 0UL;
@@ -98,7 +101,14 @@ void SensorManager::begin() {
 
 SensorReadings SensorManager::read() {
   SensorReadings readings;
-  readings.mq2Raw = analogRead(_mq2Pin);
+
+  // 8-sample fast averaging to eliminate random ADC noise spikes
+  long adcSum = 0;
+  for (int i = 0; i < 8; i++) {
+    adcSum += analogRead(_mq2Pin);
+    delayMicroseconds(200);
+  }
+  readings.mq2Raw = static_cast<int>(adcSum / 8);
   readings.mq2Valid = true;
   readings.dhtValid = false;
   readings.temperatureC = NAN;
@@ -156,7 +166,8 @@ class AlarmManager {
 public:
   AlarmManager(int relayPin, bool relayActiveLow);
   void begin();
-  bool evaluate(int mq2Raw, float temperatureC, float humidityPct, int mq2Threshold, float tempThreshold);
+  bool evaluate(int mq2Raw, float temperatureC, float humidityPct,
+                int mq2Trigger, int mq2Clear, float tempTrigger, float tempClear);
   bool isActive() const;
   AlarmReason getReason() const;
   String getReasonString() const;
@@ -166,6 +177,8 @@ private:
   int _relayPin;
   bool _relayActiveLow;
   bool _alarmActive;
+  bool _smokeAlarm;
+  bool _tempAlarm;
   AlarmReason _alarmReason;
   bool _relayStatus;
   bool _stateReported;
@@ -175,7 +188,8 @@ private:
 };
 
 AlarmManager::AlarmManager(int relayPin, bool relayActiveLow)
-  : _relayPin(relayPin), _relayActiveLow(relayActiveLow), _alarmActive(false), _alarmReason(NORMAL), _relayStatus(false), _stateReported(false) {
+  : _relayPin(relayPin), _relayActiveLow(relayActiveLow), _alarmActive(false),
+    _smokeAlarm(false), _tempAlarm(false), _alarmReason(NORMAL), _relayStatus(false), _stateReported(false) {
 }
 
 void AlarmManager::begin() {
@@ -183,6 +197,8 @@ void AlarmManager::begin() {
   pinMode(_relayPin, OUTPUT);
 
   _alarmActive = false;
+  _smokeAlarm = false;
+  _tempAlarm = false;
   _alarmReason = NORMAL;
   _relayStatus = false;
   _stateReported = true;
@@ -191,22 +207,41 @@ void AlarmManager::begin() {
   Serial.println("[ALARM] System monitoring armed - buzzer OFF");
 }
 
-bool AlarmManager::evaluate(int mq2Raw, float temperatureC, float humidityPct, int mq2Threshold, float tempThreshold) {
-  // Trigger smoke alarm when reading reaches or exceeds threshold (1500+)
-  bool smokeTriggered = mq2Raw >= mq2Threshold;
-  // Trigger heat alarm when temperature reaches or exceeds 40°C
-  bool temperatureTriggered = !isnan(temperatureC) && temperatureC >= tempThreshold;
+bool AlarmManager::evaluate(int mq2Raw, float temperatureC, float humidityPct,
+                            int mq2Trigger, int mq2Clear, float tempTrigger, float tempClear) {
+  // Dual-threshold hysteresis for smoke:
+  // Activates when smoke is heavy (>= mq2Trigger), normalizes quickly (< mq2Clear)
+  if (!_smokeAlarm) {
+    if (mq2Raw >= mq2Trigger) {
+      _smokeAlarm = true;
+    }
+  } else {
+    if (mq2Raw < mq2Clear) {
+      _smokeAlarm = false;
+    }
+  }
+
+  // Dual-threshold hysteresis for temperature:
+  if (!_tempAlarm) {
+    if (!isnan(temperatureC) && temperatureC >= tempTrigger) {
+      _tempAlarm = true;
+    }
+  } else {
+    if (isnan(temperatureC) || temperatureC < tempClear) {
+      _tempAlarm = false;
+    }
+  }
 
   AlarmReason newReason = NORMAL;
-  if (smokeTriggered && temperatureTriggered) {
+  if (_smokeAlarm && _tempAlarm) {
     newReason = SMOKE_AND_HIGH_TEMPERATURE;
-  } else if (smokeTriggered) {
+  } else if (_smokeAlarm) {
     newReason = SMOKE_OR_GAS;
-  } else if (temperatureTriggered) {
+  } else if (_tempAlarm) {
     newReason = HIGH_TEMPERATURE;
   }
 
-  bool shouldAlarm = smokeTriggered || temperatureTriggered;
+  bool shouldAlarm = _smokeAlarm || _tempAlarm;
   bool stateChanged = !_stateReported || (shouldAlarm != _alarmActive) || (newReason != _alarmReason);
   bool risingEdge = shouldAlarm && !_alarmActive;
 
@@ -214,9 +249,10 @@ bool AlarmManager::evaluate(int mq2Raw, float temperatureC, float humidityPct, i
   setBuzzerAlarm(shouldAlarm);
 
   if (stateChanged) {
-    Serial.printf("[ALARM] State Changed: %s - buzzer %s\n",
+    Serial.printf("[ALARM] State Changed: %s - buzzer %s (MQ2=%d, Temp=%.1fC)\n",
                   alarmReasonToString(_alarmReason).c_str(),
-                  shouldAlarm ? "ACTIVATED 🚨" : "DEACTIVATED");
+                  shouldAlarm ? "ACTIVATED 🚨" : "NORMALIZED / DEACTIVATED ✓",
+                  mq2Raw, temperatureC);
     _stateReported = true;
   }
 
@@ -837,10 +873,10 @@ void setup() {
   }
 
   Serial.printf("[INIT] Backend Target: %s\n", API_URL);
-  Serial.printf("[INIT] Boot Warmup: %lus | Smoke Alarm Threshold: >= %d ADC\n",
-                MQ2_WARMUP_MS / 1000UL, MQ2_ALARM_THRESHOLD);
-  Serial.printf("[INIT] Temperature Alarm Threshold: >= %.1f deg C\n", TEMP_THRESHOLD_C);
-  Serial.println("[INIT] Buzzer triggers when Smoke >= 800 ADC OR Temp >= 40.0C.");
+  Serial.printf("[INIT] Smoke Trigger Threshold: >= %d ADC | Fast Recovery Threshold: < %d ADC\n",
+                MQ2_TRIGGER_THRESHOLD, MQ2_CLEAR_THRESHOLD);
+  Serial.printf("[INIT] Temperature Trigger: >= %.1f C | Recovery: < %.1f C\n",
+                TEMP_TRIGGER_C, TEMP_CLEAR_C);
   Serial.println("[INIT] Setup complete.\n");
 }
 
@@ -857,14 +893,16 @@ void loop() {
     lastSensorRead = now;
 
     SensorReadings readings = sensorManager.read();
-    mq2Raw        = readings.mq2Raw;      // Live physical ADC reading (e.g. 466 ADC)
+    mq2Raw        = readings.mq2Raw;      // Live physical ADC reading
     mq2RawActual  = readings.mq2Raw;
     temperatureC  = readings.temperatureC;
     humidityPct   = readings.humidityPct;
     sensorStatus  = readings.sensorStatus;
 
-    // ── Real-Time Alarm Evaluation (Continuous time-to-time active monitoring) ──
-    bool risingEdge = alarmManager.evaluate(mq2Raw, temperatureC, humidityPct, MQ2_ALARM_THRESHOLD, TEMP_THRESHOLD_C);
+    // ── Real-Time Alarm Evaluation with Fast Recovery Hysteresis ──
+    bool risingEdge = alarmManager.evaluate(mq2Raw, temperatureC, humidityPct,
+                                           MQ2_TRIGGER_THRESHOLD, MQ2_CLEAR_THRESHOLD,
+                                           TEMP_TRIGGER_C, TEMP_CLEAR_C);
 
     // ── CRITICAL DISPATCH: FAST CLOUD TRANSMISSION (TEXTBEE & BREVO) ──
     // When alarm fires, do NOT wait for the 3-second cycle. Dispatch immediately!
