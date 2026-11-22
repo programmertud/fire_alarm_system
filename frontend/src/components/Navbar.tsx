@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 interface NavbarProps {
   alarmActive?: boolean;
@@ -10,29 +10,15 @@ export default function Navbar({ alarmActive, hasTelemetry }: NavbarProps) {
     <header className="navbar-header">
       <div className="navbar-container">
         <div className="navbar-brand">
-          <div className="brand-text">
-            <span className="brand-eyebrow">IoT Disaster Prevention</span>
-            <h1 className="brand-title">Fire Alarm Monitor</h1>
-          </div>
+          <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
+            <div className="brand-text">
+              <span className="brand-eyebrow">IoT Disaster Prevention</span>
+              <h1 className="brand-title">Fire Alarm Monitor</h1>
+            </div>
+          </Link>
         </div>
 
         <div className="navbar-actions">
-          <nav className="navbar-nav">
-            <NavLink
-              to="/"
-              className={({ isActive }) => `nav-btn ${isActive ? "active" : ""}`}
-              end
-            >
-              <span>Live Monitor</span>
-            </NavLink>
-            <NavLink
-              to="/registered"
-              className={({ isActive }) => `nav-btn ${isActive ? "active" : ""}`}
-            >
-              <span>Alert Recipients</span>
-            </NavLink>
-          </nav>
-
           <div
             className={`status-pill ${
               !hasTelemetry ? "waiting" : alarmActive ? "danger" : "safe"
