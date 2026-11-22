@@ -86,11 +86,15 @@ private:
   int _mq2Pin;
   int _dhtReadFailures;
   unsigned long _lastErrorReport;
+  unsigned long _lastDhtRead;
+  float _lastValidTemp;
+  float _lastValidHum;
   String _currentStatus;
 };
 
 SensorManager::SensorManager(int dhtPin, int dhtType, int mq2Pin)
-  : _dht(dhtPin, dhtType), _mq2Pin(mq2Pin), _dhtReadFailures(0), _lastErrorReport(0), _currentStatus("OK") {
+  : _dht(dhtPin, dhtType), _mq2Pin(mq2Pin), _dhtReadFailures(0), _lastErrorReport(0),
+    _lastDhtRead(0), _lastValidTemp(NAN), _lastValidHum(NAN), _currentStatus("OK") {
 }
 
 void SensorManager::begin() {
@@ -110,35 +114,44 @@ SensorReadings SensorManager::read() {
   }
   readings.mq2Raw = static_cast<int>(adcSum / 8);
   readings.mq2Valid = true;
-  readings.dhtValid = false;
-  readings.temperatureC = NAN;
-  readings.humidityPct = NAN;
 
-  float t = _dht.readTemperature();
-  float h = _dht.readHumidity();
+  // DHT22 hardware requirement: minimum 2000ms between reads.
+  // We query DHT22 every 2500ms while keeping MQ-2 sampling fast (1000ms).
+  unsigned long now = millis();
+  if (_lastDhtRead == 0 || (now - _lastDhtRead >= 2500)) {
+    _lastDhtRead = now;
 
-  if (!isnan(t) && !isnan(h)) {
-    readings.temperatureC = t;
-    readings.humidityPct = h;
-    readings.dhtValid = true;
-    _dhtReadFailures = 0;
-    if (_currentStatus != "OK") {
-      Serial.println("[SENSOR] DHT22 readings recovered");
-    }
-    _currentStatus = "OK";
-  } else {
-    _dhtReadFailures++;
-    if (_currentStatus != "DHT_ERROR") {
-      Serial.println("[SENSOR] DHT22 read failed - temperature alarm disabled for invalid reading");
-    }
-    _currentStatus = "DHT_ERROR";
-    if (_dhtReadFailures >= DHT_MAX_READ_FAILURES) {
-      unsigned long now = millis();
-      if (now - _lastErrorReport >= SENSOR_ERROR_COOLDOWN_MS) {
-        _lastErrorReport = now;
-        Serial.println("[SENSOR] DHT22 sensor error - multiple read failures");
+    float t = _dht.readTemperature();
+    float h = _dht.readHumidity();
+
+    if (!isnan(t) && !isnan(h) && t >= -40.0f && t <= 80.0f && h >= 0.0f && h <= 100.0f) {
+      _lastValidTemp = t;
+      _lastValidHum = h;
+      _dhtReadFailures = 0;
+      if (_currentStatus != "OK") {
+        Serial.println("[SENSOR] DHT22 readings recovered");
+      }
+      _currentStatus = "OK";
+    } else {
+      _dhtReadFailures++;
+      if (_dhtReadFailures >= DHT_MAX_READ_FAILURES) {
+        if (_currentStatus != "DHT_ERROR") {
+          Serial.println("[SENSOR] DHT22 read failed - multiple consecutive read errors");
+        }
+        _currentStatus = "DHT_ERROR";
       }
     }
+  }
+
+  // Supply the latest valid temperature & humidity so display never drops to STANDBY
+  if (!isnan(_lastValidTemp) && !isnan(_lastValidHum) && _dhtReadFailures < DHT_MAX_READ_FAILURES) {
+    readings.temperatureC = _lastValidTemp;
+    readings.humidityPct = _lastValidHum;
+    readings.dhtValid = true;
+  } else {
+    readings.temperatureC = NAN;
+    readings.humidityPct = NAN;
+    readings.dhtValid = false;
   }
 
   readings.sensorStatus = _currentStatus;
