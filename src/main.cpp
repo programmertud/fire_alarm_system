@@ -48,8 +48,14 @@ constexpr int   MQ2_CLEAR_THRESHOLD   = 820;    // Alarm normalizes quickly when
 constexpr float TEMP_TRIGGER_C        = 40.0f;  // Temperature alarm triggers at 40°C
 constexpr float TEMP_CLEAR_C          = 38.0f;  // Temperature alarm clears below 38°C
 
-// Immediate Real-Time Active Monitoring (0s warmup - reads and arms immediately at boot)
-constexpr unsigned long MQ2_WARMUP_MS = 0UL;
+// MQ-2 Cold-Start Warmup Guard
+// After being powered off for a long time, the MQ-2 heater element cools down.
+// On power-on it spikes to 2000-4000+ ADC for ~2-3 minutes (false alarm zone).
+// 120s warmup mutes the buzzer while still streaming live ADC to the dashboard.
+// After warmup, the sensor must read < 700 ADC for 5 consecutive reads before arming.
+constexpr unsigned long MQ2_WARMUP_MS         = 120000UL; // 120 seconds cold-start guard
+constexpr int           MQ2_STABLE_THRESHOLD  = 700;      // ADC must be below this after warmup
+constexpr int           MQ2_STABLE_COUNT_REQ  = 5;        // consecutive stable reads required
 
 // Timing Configuration - continuous rapid sampling time-to-time
 constexpr unsigned long SENSOR_INTERVAL_MS = 1000;    // Sample sensors every 1.0 second
@@ -183,7 +189,8 @@ public:
   AlarmManager(int relayPin, bool relayActiveLow);
   void begin();
   bool evaluate(int mq2Raw, float temperatureC, float humidityPct,
-                int mq2Trigger, int mq2Clear, float tempTrigger, float tempClear);
+                int mq2Trigger, int mq2Clear, float tempTrigger, float tempClear,
+                bool smokeMonitoringEnabled = true);
   bool isActive() const;
   AlarmReason getReason() const;
   String getReasonString() const;
@@ -224,17 +231,22 @@ void AlarmManager::begin() {
 }
 
 bool AlarmManager::evaluate(int mq2Raw, float temperatureC, float humidityPct,
-                            int mq2Trigger, int mq2Clear, float tempTrigger, float tempClear) {
-  // Dual-threshold hysteresis for smoke:
-  // Activates when smoke is heavy (>= mq2Trigger), normalizes quickly (< mq2Clear)
-  if (!_smokeAlarm) {
-    if (mq2Raw >= mq2Trigger) {
-      _smokeAlarm = true;
+                            int mq2Trigger, int mq2Clear, float tempTrigger, float tempClear,
+                            bool smokeMonitoringEnabled) {
+  // Dual-threshold hysteresis for smoke (only active after warmup baseline stabilizes):
+  if (smokeMonitoringEnabled) {
+    if (!_smokeAlarm) {
+      if (mq2Raw >= mq2Trigger) {
+        _smokeAlarm = true;
+      }
+    } else {
+      if (mq2Raw < mq2Clear) {
+        _smokeAlarm = false;
+      }
     }
   } else {
-    if (mq2Raw < mq2Clear) {
-      _smokeAlarm = false;
-    }
+    // Mute smoke buzzer trigger during cold-start warmup
+    _smokeAlarm = false;
   }
 
   // Dual-threshold hysteresis for temperature:
@@ -712,6 +724,7 @@ struct TelemetryData {
   String wifiStatus;
   String gsmStatus;
   unsigned long uptimeMs;
+  bool warmupActive;
 };
 
 class APIClient {
@@ -756,6 +769,7 @@ bool APIClient::sendTelemetry(const TelemetryData& data, bool isEmergency) {
   doc["wifiStatus"] = data.wifiStatus;
   doc["gsmStatus"] = data.gsmStatus;
   doc["uptimeMs"] = data.uptimeMs;
+  doc["warmupActive"] = data.warmupActive;
 
   String payload;
   serializeJson(doc, payload);
@@ -834,12 +848,14 @@ float temperatureC = NAN;
 float humidityPct = NAN;
 String sensorStatus = "OK";
 
-// ── MQ2 Baseline Calibration State ───────────────────────────────────────────
+// ── MQ2 Baseline Calibration & Warmup State ──────────────────────────────────
 int   mq2Baseline       = -1;    // -1 = not yet calibrated
 long  mq2CalibSum       = 0;
 int   mq2CalibSamples   = 0;
 bool  mq2Calibrated     = false;
 int   mq2RawActual      = 0;     // the true hardware ADC reading (pre-baseline subtraction)
+bool  mq2WarmedUp       = false; // tracks if cold-start 120s warmup + stable baseline completed
+int   mq2StableCount    = 0;
 
 // Helper to bundle telemetry
 TelemetryData buildCurrentTelemetry() {
@@ -858,6 +874,7 @@ TelemetryData buildCurrentTelemetry() {
   telemetry.wifiStatus = wifiManager.getStatus();
   telemetry.gsmStatus = gsmManager.getStatus();
   telemetry.uptimeMs = millis();
+  telemetry.warmupActive = !mq2WarmedUp;
   return telemetry;
 }
 
@@ -915,10 +932,41 @@ void loop() {
     humidityPct   = readings.humidityPct;
     sensorStatus  = readings.sensorStatus;
 
+    // ── Check Cold-Start Warmup & Stabilization State ──
+    bool warmupActive = false;
+    if (!mq2WarmedUp) {
+      if (now < MQ2_WARMUP_MS) {
+        warmupActive = true;
+        unsigned long remainingSec = (MQ2_WARMUP_MS - now) / 1000UL;
+        Serial.printf("[WARMUP] MQ-2 heating up after power-on... (%lus remaining) | ADC=%d (buzzer muted)\n",
+                      remainingSec, mq2Raw);
+      } else {
+        // 120s timer elapsed - check dynamic baseline stability
+        if (mq2Raw < MQ2_STABLE_THRESHOLD) {
+          mq2StableCount++;
+          if (mq2StableCount >= MQ2_STABLE_COUNT_REQ) {
+            mq2WarmedUp = true;
+            warmupActive = false;
+            Serial.printf("[WARMUP] ✓ MQ-2 baseline stabilized (ADC=%d). Smoke monitoring fully armed!\n", mq2Raw);
+          } else {
+            warmupActive = true;
+            Serial.printf("[WARMUP] Baseline settling... (%d/%d checks < %d ADC) | Current ADC=%d\n",
+                          mq2StableCount, MQ2_STABLE_COUNT_REQ, MQ2_STABLE_THRESHOLD, mq2Raw);
+          }
+        } else {
+          mq2StableCount = 0;
+          warmupActive = true;
+          Serial.printf("[WARMUP] Waiting for ADC to drop below %d... current ADC=%d\n",
+                        MQ2_STABLE_THRESHOLD, mq2Raw);
+        }
+      }
+    }
+
     // ── Real-Time Alarm Evaluation with Fast Recovery Hysteresis ──
     bool risingEdge = alarmManager.evaluate(mq2Raw, temperatureC, humidityPct,
                                            MQ2_TRIGGER_THRESHOLD, MQ2_CLEAR_THRESHOLD,
-                                           TEMP_TRIGGER_C, TEMP_CLEAR_C);
+                                           TEMP_TRIGGER_C, TEMP_CLEAR_C,
+                                           !warmupActive);
 
     // ── CRITICAL DISPATCH: FAST CLOUD TRANSMISSION (TEXTBEE & BREVO) ──
     // When alarm fires, do NOT wait for the 3-second cycle. Dispatch immediately!
@@ -957,10 +1005,11 @@ void loop() {
 
     previousAlarmState = alarmManager.isActive();
 
-    Serial.printf("[SENSOR] MQ-2 ADC=%d | Temp=%.1f C | Hum=%.1f %% | Alarm=%s (%s) | Wi-Fi=%s\n",
+    Serial.printf("[SENSOR] MQ-2 ADC=%d | Temp=%.1f C | Hum=%.1f %% | Alarm=%s (%s)%s | Wi-Fi=%s\n",
                   mq2Raw, temperatureC, humidityPct,
                   alarmManager.isActive() ? "ACTIVE" : "OFF",
                   alarmManager.getReasonString().c_str(),
+                  !mq2WarmedUp ? " [WARMING UP]" : "",
                   wifiManager.getStatus().c_str());
   }
 

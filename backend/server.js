@@ -353,6 +353,7 @@ app.post("/api/telemetry", async (req, res) => {
     alarmReason:   typeof body.alarmReason === "string" ? body.alarmReason : "NORMAL",
     wifiConnected: Boolean(body.wifiConnected || body.wifiStatus === "CONNECTED"),
     uptimeMs:      Number.isFinite(body.uptimeMs) ? body.uptimeMs : null,
+    warmupActive:  Boolean(body.warmupActive),
   };
   lastReceivedAt = new Date().toISOString();
 

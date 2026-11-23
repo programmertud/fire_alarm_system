@@ -9,6 +9,7 @@ export type Telemetry = {
   alarmReason: string;
   wifiConnected: boolean;
   uptimeMs: number | null;
+  warmupActive?: boolean;
 };
 
 interface DashboardProps {
@@ -33,6 +34,7 @@ interface MetricCardProps {
   barPct: number;
   alert?: boolean;
   isReady?: boolean;
+  warmingUp?: boolean;
 }
 
 function MetricCard({
@@ -46,9 +48,22 @@ function MetricCard({
   barPct,
   alert,
   isReady,
+  warmingUp,
 }: MetricCardProps) {
-  const statusText = alert ? "ALERT" : isReady ? "NORMAL" : "STANDBY";
-  const statusClass = alert ? "badge-danger" : isReady ? "badge-normal" : "badge-standby";
+  const statusText = alert
+    ? "ALERT"
+    : warmingUp
+    ? "WARMING UP"
+    : isReady
+    ? "NORMAL"
+    : "STANDBY";
+  const statusClass = alert
+    ? "badge-danger"
+    : warmingUp
+    ? "badge-warning"
+    : isReady
+    ? "badge-normal"
+    : "badge-standby";
   const pct = Math.round(barPct * 100);
 
   return (
@@ -115,6 +130,8 @@ export default function Dashboard({
     Boolean(telemetry?.alarmActive && telemetry?.alarmReason?.includes("TEMPERATURE")) ||
     (telemetry?.temperatureC ?? 0) >= 40;
 
+  const isWarmingUp = Boolean(!alarm && telemetry?.warmupActive);
+
   return (
     <div className="dashboard-layout">
       {error && (
@@ -125,17 +142,33 @@ export default function Dashboard({
       )}
 
       {/* ── Continuous Live Status Banner ─────────── */}
-      <div className={`condition-banner ${alarm ? "alarm-active" : "safe-active"}`}>
+      <div
+        className={`condition-banner ${
+          alarm ? "alarm-active" : isWarmingUp ? "warmup-active" : "safe-active"
+        }`}
+      >
         <div className="banner-icon-badge">
-          {alarm ? "🚨" : "🛡️"}
+          {alarm ? "🚨" : isWarmingUp ? "⏳" : "🛡️"}
         </div>
         <div className="banner-content">
           <div className="banner-top">
-            <span className={`banner-badge ${alarm ? "danger" : "safe"}`}>
-              {alarm ? "HAZARD ACTIVE" : "CONTINUOUS MONITORING ACTIVE"}
+            <span
+              className={`banner-badge ${
+                alarm ? "danger" : isWarmingUp ? "warning" : "safe"
+              }`}
+            >
+              {alarm
+                ? "HAZARD ACTIVE"
+                : isWarmingUp
+                ? "SENSOR WARMUP IN PROGRESS"
+                : "CONTINUOUS MONITORING ACTIVE"}
             </span>
             <h2 className="banner-title">
-              {alarm ? telemetry?.alarmReason || "EMERGENCY DETECTED" : "All Sensors Operational & Reading Live"}
+              {alarm
+                ? telemetry?.alarmReason || "EMERGENCY DETECTED"
+                : isWarmingUp
+                ? "MQ-2 Heater Stabilizing (Buzzer Protected)"
+                : "All Sensors Operational & Reading Live"}
             </h2>
           </div>
           <div className="banner-bottom">
@@ -160,7 +193,8 @@ export default function Dashboard({
           rangeMin="0"
           rangeMax="4095"
           barPct={smokePct}
-          alert={smokeAlert}
+          alert={smokeAlert && !telemetry?.warmupActive}
+          warmingUp={Boolean(telemetry?.warmupActive)}
           isReady={isReady}
         />
         <MetricCard
